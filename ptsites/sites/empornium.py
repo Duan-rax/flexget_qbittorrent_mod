@@ -4,7 +4,7 @@ from ..base.entry import SignInEntry
 from ..base.sign_in import SignState
 from ..base.sign_in import check_final_state
 from ..base.work import Work
-from ..schema.gazelle import Gazelle
+from ..schema.emp import Gazelle
 from ..utils import net_utils
 
 
