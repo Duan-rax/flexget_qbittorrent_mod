@@ -398,11 +398,12 @@ class DetailsReport:
             font_size_start = 1
         perfect_height = bar_height - 4
         font_size = font_size_start
-        font_tmp = ImageFont.truetype(font_path, font_size)
+        font_tmp = ImageFont.truetype(font_path, max(1, font_size))
         _, _, width, height = font_tmp.getbbox(test_str)
         if height > perfect_height or width > cell_width - 20:
             while height > perfect_height or width > cell_width - 20:
-                font_size += -1
+                font_size -= 1
+                font_size = max(1, font_size)
                 font_tmp = ImageFont.truetype(font_path, font_size)
                 _, _, width, height = font_tmp.getbbox(test_str)
         else:
