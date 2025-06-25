@@ -76,7 +76,7 @@ class MainClass(Unit3D, Reseed):
             Work(
                 url='/',
                 method=self.sign_in_by_get,
-                succeed_regex=[('<a class="top-nav__username" href="https://pt.hdpost.top/users/(.*?)">', 1)],
+                succeed_regex=[('https://pt.hdpost.top/users/(.*?)/', 1)],
                 assert_state=(check_final_state, SignState.SUCCEED),
                 use_last_content=True,
                 is_base_content=True,
@@ -86,7 +86,7 @@ class MainClass(Unit3D, Reseed):
 
     def sign_in_build_login_data(self, login: dict, last_content: str) -> dict:
         login_page = get_soup(last_content)
-        hidden_input = login_page.select_one('#formContent > form > input[type=hidden]:nth-child(7)')
+        hidden_input = login_page.select_one('form > input:nth-last-child(2)')
         name = hidden_input.attrs['name']
         value = hidden_input.attrs['value']
         return {
@@ -109,17 +109,19 @@ class MainClass(Unit3D, Reseed):
                     'do_not_strip': True,
                     'elements': {
                         'bar': 'ul.top-nav__ratio-bar',
-                        'header': '.header',
-                        'data_table': '.user-info'
+                        'header': '.profile__registration',
+                        'data_table': 'aside'
                     }
                 }
             },
             'details': {
                 'uploaded': {
-                    'regex': '上传.+?([\\d.]+ [ZEPTGMK]?iB)'
+                    'regex': '上传.+?([\\d.]+ [ZEPTGMK]?iB)',
+                             'handle': self.remove_symbol
                 },
                 'downloaded': {
-                    'regex': '下载.+?([\\d.]+ [ZEPTGMK]?iB)'
+                    'regex': '下载.+?([\\d.]+ [ZEPTGMK]?iB)',
+                    'handle': self.remove_symbol
                 },
                 'share_ratio': {
                     'regex': '分享率.+?([\\d.]+)',
@@ -130,7 +132,7 @@ class MainClass(Unit3D, Reseed):
                     'handle': self.handle_points
                 },
                 'join_date': {
-                    'regex': '注册日期 (.*?\\d{4})',
+                    'regex': r'注册日期.*?(\d{4}-\d{2}-\d{2})',
                     'handle': handle_join_date
                 },
                 'seeding': {
@@ -140,7 +142,7 @@ class MainClass(Unit3D, Reseed):
                     'regex': '吸血.+?(\\d+)'
                 },
                 'hr': {
-                    'regex': '有效.+?(\\d+)'
+                    'regex': 'H&amp;R.+?(\\d+)'
                 }
             }
         })
@@ -151,3 +153,6 @@ class MainClass(Unit3D, Reseed):
                            torrent_id: str) -> None:
         download_page = site['download_page'].format(torrent_id=torrent_id, rsskey=passkey['rsskey'])
         entry['url'] = urljoin(MainClass.URL, download_page)
+
+    def remove_symbol(self, value: str):
+        return value.replace('\xa0', '')

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import copy
-import hashlib
 import time
 from json import JSONDecodeError
 
+import copy
+import hashlib
 from flexget import plugin
 from flexget.entry import Entry
 from flexget.event import event
@@ -14,6 +14,7 @@ from flexget.task import Task
 from flexget.utils import json
 from loguru import logger
 from requests import RequestException
+from urllib.parse import urljoin
 
 from .ptsites import executor
 from .ptsites.utils import net_utils
@@ -83,7 +84,7 @@ def transmission_on_task_download(self, task: Task, config: dict) -> None:
 PluginTransmission.on_task_download = transmission_on_task_download
 
 
-def get_deluge_seeding(client_torrent: dict):
+def get_deluge_seeding(client_torrent: dict) -> dict:
     if 'seeding' in client_torrent['deluge_state'].lower():
         client_torrent['reseed'] = {
             'path': client_torrent['deluge_save_path'],
@@ -125,6 +126,8 @@ client_map = {
     'deluge': to_deluge,
 }
 
+last_hashes = []
+
 
 class PluginIYUUAutoReseed:
     schema = {
@@ -138,7 +141,7 @@ class PluginIYUUAutoReseed:
                 ]
             },
             'to': {'type': 'string', 'enum': list(filter(lambda x: not x.startswith('from'), client_map.keys()))},
-            'iyuu': {'type': 'string'},
+            'token': {'type': 'string'},
             'user-agent': {'type': 'string'},
             'show_detail': {'type': 'boolean'},
             'limit': {'type': 'integer'},
@@ -151,15 +154,17 @@ class PluginIYUUAutoReseed:
     }
 
     def prepare_config(self, config: dict) -> dict:
-        config.setdefault('iyuu', '')
-        config.setdefault('version', '1.10.9')
+        config.setdefault('token', '')
         config.setdefault('limit', 999)
         config.setdefault('show_detail', False)
         config.setdefault('passkeys', {})
+        config.setdefault('version', '8.2.0')
         return config
 
     def on_task_input(self, task: Task, config: dict) -> list[Entry]:
+        url = 'https://2025.iyuu.cn'
         config = self.prepare_config(config)
+        token = config.get('token')
         passkeys = config.get('passkeys')
         limit = config.get('limit')
         show_detail = config.get('show_detail')
@@ -186,29 +191,38 @@ class PluginIYUUAutoReseed:
             return []
 
         try:
-            data = {
-                'sign': config['iyuu'],
-                'version': config['version']
-            }
-            sites_response = task.requests.get('https://api.iyuu.cn/index.php?s=App.Api.Sites', timeout=60,
-                                               params=data).json()
-            if sites_response.get('ret') != 200:
+            sites_response = task.requests.get(urljoin(url, '/reseed/sites/index'), timeout=60,
+                                               headers={'token': token}).json()
+            if sites_response.get('code') != 0:
                 raise plugin.PluginError(
-                    'https://api.iyuu.cn/index.php?s=App.Api.Sites: {}'.format(sites_response)
+                    f'{urljoin(url, "/reseed/sites/index")}: {sites_response}'
                 )
             sites_json = self.modify_sites(sites_response['data']['sites'])
 
-            reseed_response = task.requests.post('https://api.iyuu.cn/index.php?s=App.Api.Infohash',
-                                                 json=torrents_hashes,
-                                                 timeout=60).json()
-            if reseed_response.get('ret') != 200:
+            sid_list = {"sid_list": [int(key) for key in sites_json.keys()]}
+            report_response = task.requests.post(urljoin(url, '/reseed/sites/reportExisting'), timeout=60,
+                                                 headers={'token': token},
+                                                 json=sid_list).json()
+            if report_response.get('code') != 0:
                 raise plugin.PluginError(
-                    'https://api.iyuu.cn/index.php?s=App.Api.Infohash Error: {}'.format(reseed_response)
+                    f'{urljoin(url, "/reseed/sites/reportExisting")}: {report_response}'
+                )
+            sid_sha1 = report_response['data']['sid_sha1']
+            torrents_hashes['sid_sha1'] = sid_sha1
+
+            reseed_response = task.requests.post(urljoin(url, '/reseed/index/index'),
+                                                 headers={'token': token},
+                                                 data=torrents_hashes,
+                                                 timeout=60).json()
+            if reseed_response.get('code') != 0:
+                raise plugin.PluginError(
+                    f'{urljoin(url, "/reseed/index/index")} Error: {reseed_response}'
                 )
             reseed_json = reseed_response['data']
+
         except (RequestException, JSONDecodeError) as e:
             raise plugin.PluginError(
-                'Error when trying to send request to iyuu: {}'.format(e)
+                f'Error when trying to send request to iyuu: {e}'
             )
 
         entries = []
@@ -226,19 +240,14 @@ class PluginIYUUAutoReseed:
                     if not passkey:
                         if show_detail:
                             logger.info(
-                                'no passkey, skip site: {}, title: {}'.format(site['base_url'],
-                                                                              client_torrent['title']))
+                                f"no passkey, skip site: {site['base_url']}, title: {client_torrent['title']}")
                         continue
                     if not site_limit.get(site_name):
                         site_limit[site_name] = 1
                     else:
                         if site_limit[site_name] >= limit:
                             logger.info(
-                                'site_limit:{} >= limit: {}, skip site: {}, title: {}'.format(
-                                    site_limit[site_name],
-                                    limit,
-                                    site_name,
-                                    client_torrent['title'])
+                                f'site_limit:{site_limit[site_name]} >= limit: {limit}, skip site: {site_name}, title: {client_torrent["title"]}'
                             )
                             continue
                         site_limit[site_name] = site_limit[site_name] + 1
@@ -261,21 +270,25 @@ class PluginIYUUAutoReseed:
         torrent_dict = {}
         torrents_hashes = {}
         hashes = []
+        global last_hashes
 
         for client_torrent in result:
             if from_client_method(client_torrent):
                 torrent_info_hash = client_torrent['torrent_info_hash'].lower()
                 torrent_dict[torrent_info_hash] = client_torrent
                 hashes.append(torrent_info_hash)
-
         list.sort(hashes)
-        hashes_json = json.dumps(hashes, separators=(',', ':'))
+
+        if len(last_hashes) == 0:
+            last_hashes = hashes
+
+        hashes_json = json.dumps(last_hashes[:300], separators=(',', ':'))
+        last_hashes = last_hashes[300:]
         sha1 = hashlib.sha1(hashes_json.encode("utf-8")).hexdigest()
 
         torrents_hashes['hash'] = hashes_json
         torrents_hashes['sha1'] = sha1
 
-        torrents_hashes['sign'] = config['iyuu']
         torrents_hashes['timestamp'] = int(time.time())
         torrents_hashes['version'] = config['version']
 

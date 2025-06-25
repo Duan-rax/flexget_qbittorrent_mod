@@ -23,7 +23,7 @@ class MainClass(Unit3D):
     URL: Final = 'https://beyond-hd.me/'
 
     @classmethod
-    def sign_in_build_schema(cls):
+    def sign_in_build_schema(cls) -> dict:
         return {
             get_module_name(cls): {
                 'type': 'object',
@@ -52,7 +52,7 @@ class MainClass(Unit3D):
     @property
     def details_selector(self) -> dict:
         return {
-            'user_id': '/([^.]+\.\d+)/badges"',
+            'user_id': '/([^.]+\.\d+)">My Profile',
             'detail_sources': {
                 'default': {
                     'link': '/{}',

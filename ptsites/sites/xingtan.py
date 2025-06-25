@@ -1,11 +1,12 @@
 from typing import Final
 
-from ..schema.nexusphp import AttendanceHR
+from ..base.reseed import ReseedPasskey
+from ..schema.nexusphp import Attendance
 from ..utils import net_utils
 from ..utils.value_handler import size
 
 
-class MainClass(AttendanceHR):
+class MainClass(Attendance, ReseedPasskey):
     URL: Final = 'https://xingtan.one/'
     USER_CLASSES: Final = {
         'downloaded': [size(750, 'GiB'), size(3, 'TiB')],
@@ -20,9 +21,6 @@ class MainClass(AttendanceHR):
             'details': {
                 'points': {
                     'regex': (r'(杏仁值).*?([\d,.]+)', 2)
-                },
-                'hr': {
-                    'regex': r'\d+/(\d+)/\d'
                 }
             }
         })

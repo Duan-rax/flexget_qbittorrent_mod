@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from typing import Final
 
+from ..base.reseed import ReseedPasskey
 from ..schema.nexusphp import Attendance
 from ..utils import net_utils
 from ..utils.value_handler import size
 
 
-class MainClass(Attendance):
+class MainClass(Attendance, ReseedPasskey):
     URL: Final = 'https://www.icc2022.com/'
     USER_CLASSES: Final = {
         'downloaded': [size(750, 'GiB'), size(3, 'TiB')],
@@ -23,8 +24,8 @@ class MainClass(Attendance):
             'detail_sources': {
                 'default': {
                     'elements': {
-                        'bar': 'body > div.head > div.right > div.top > span',
-                        'table': '#info_block > div.info_block_main > div.main > table'
+                        'bar': '.medium',
+                        'table': '#outer .embedded'
                     }
                 }
             },

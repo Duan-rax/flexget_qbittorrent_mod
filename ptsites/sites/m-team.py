@@ -1,24 +1,30 @@
 from __future__ import annotations
 
-import re
+import datetime
+import json
 from typing import Final
 from urllib.parse import urljoin
 
-from requests import Response
+from dateutil.parser import parse
+from flexget.entry import Entry
+from requests import Response, request
 
 from ..base.entry import SignInEntry
-from ..base.request import check_network_state, NetworkState
-from ..base.reseed import ReseedPasskey
+from ..base.request import NetworkState
+from ..base.reseed import Reseed
 from ..base.sign_in import check_final_state, SignState, Work
 from ..schema.nexusphp import NexusPHP
-from ..utils import net_utils, google_auth
+from ..utils import url_recorder
 from ..utils.net_utils import get_module_name
+from ..utils.value_handler import handle_infinite
 
 
-class MainClass(NexusPHP, ReseedPasskey):
-    URL: Final = 'https://kp.m-team.cc/'
-    VERIFY_URL: Final = '/verify.php?returnto='
-    SUCCEED_REGEX = '歡迎回來'
+class MainClass(NexusPHP, Reseed):
+    URL: Final = 'https://api.m-team.io/'
+    PROFILE_URL = '/api/member/profile'
+    MY_PEER_STATUS = '/api/tracker/myPeerStatus'
+    GEN_DL_TOKEN = '/api/torrent/genDlToken'
+    SUCCEED_REGEX = 'SUCCESS'
     USER_CLASSES: Final = {
         'downloaded': [2147483648000, 3221225472000],
         'share_ratio': [7, 9],
@@ -31,99 +37,104 @@ class MainClass(NexusPHP, ReseedPasskey):
             get_module_name(cls): {
                 'type': 'object',
                 'properties': {
-                    'cookie': {'type': 'string'},
-                    'secret_key': {'type': 'string'},
-                    'login': {
-                        'type': 'object',
-                        'properties': {
-                            'username': {'type': 'string'},
-                            'password': {'type': 'string'}
-                        },
-                        'additionalProperties': False
-                    }
+                    'key': {'type': 'string'}
                 },
                 'additionalProperties': False
             }
         }
 
-    def sign_in_build_login_workflow(self, entry: SignInEntry, config: dict) -> list[Work]:
-        return [
-            Work(
-                url='/takelogin.php',
-                method=self.sign_in_by_login,
-                succeed_regex=[self.SUCCEED_REGEX],
-                assert_state=(check_final_state, SignState.SUCCEED),
-                response_urls=['/verify.php?returnto=', '/index.php'],
-                is_base_content=True,
-            )
-        ]
+    def get_details(self, entry: SignInEntry, config: dict) -> None:
+        details_response_json = json.loads(entry['base_content'])
+        if not details_response_json:
+            return
+        my_peer_status_response = self.request(entry, 'POST', urljoin(self.URL, self.MY_PEER_STATUS))
+        my_peer_status_response_json = my_peer_status_response.json()
+        entry['details'] = {
+            'uploaded': f'{details_response_json.get("data").get("memberCount").get("uploaded") or 0} B'.replace(',',
+                                                                                                                 ''),
+            'downloaded': f'{details_response_json.get("data").get("memberCount").get("downloaded") or 0} B'.replace(
+                ',',
+                ''),
+            'share_ratio': handle_infinite(
+                str(details_response_json.get('data').get('memberCount').get('shareRate') or 0).replace(',', '')),
+            'points': str(details_response_json.get('data').get('memberCount').get('bonus') or 0).replace(
+                ',', ''),
+            'seeding': str(my_peer_status_response_json.get('data').get('seeder') or 0).replace(',', ''),
+            'leeching': str(my_peer_status_response_json.get('data').get('leecher') or 0).replace(',',
+                                                                                                  ''),
+            'hr': '*'
+        }
 
     def sign_in_build_workflow(self, entry: SignInEntry, config: dict) -> list[Work]:
         return [
             Work(
-                url='/',
-                method=self.sign_in_by_get,
+                url=self.PROFILE_URL,
+                method=self.sign_in_by_post,
+                data={},
                 succeed_regex=[self.SUCCEED_REGEX],
                 assert_state=(check_final_state, SignState.SUCCEED),
-                response_urls=['/verify.php?returnto=%2F', '/', '/index.php'],
                 is_base_content=True
             )
         ]
 
-    def sign_in_build_login_data(self, login: dict, last_content: str) -> dict:
-        return login
-
-    def sign_in_by_login(self, entry: SignInEntry, config: dict, work: Work, last_content: str) -> Response | None:
-        login_response = super().sign_in_by_login(entry, config, work, last_content)
-        if check_network_state(entry, work, login_response) != NetworkState.SUCCEED:
-            return None
-        verify_response = self.check_verify(entry, login_response)
-        return verify_response
-
-    def sign_in_by_get(self,
-                       entry: SignInEntry,
-                       config: dict,
-                       work: Work,
-                       last_content: str = None,
-                       ) -> Response | None:
-        response = super().sign_in_by_get(entry, config, work, last_content)
-        if check_network_state(entry, work, response) != NetworkState.SUCCEED:
-            return None
-        verify_response = self.check_verify(entry, response)
-        return verify_response
-
-    def check_verify(self, entry, response: Response) -> Response | None:
-        verify_url = urljoin(entry['url'], MainClass.VERIFY_URL)
-        if response.url.startswith(verify_url):
-            if not (secret_key := entry['site_config'].get('secret_key')):
-                entry.fail_with_prefix('Attempts text not found!  with google_auth')
-                return response
-            content = net_utils.decode(response)
-            attempts = re.search('您還有(\\d+)次嘗試機會，否則該IP將被禁止訪問。', content)
-            if attempts:
-                times = attempts.group(1)
-                if times == '30':
-                    google_code = google_auth.calc(secret_key)
-                    data = {
-                        'otp': (None, google_code)
-                    }
-                    return self.request(entry, 'post', verify_url, files=data)
-                entry.fail_with_prefix(f'{attempts.group()} with google_auth')
-            else:
-                entry.fail_with_prefix('Attempts text not found!  with google_auth')
+    def sign_in_by_post(self,
+                        entry: SignInEntry,
+                        config: dict,
+                        work: Work,
+                        last_content: str = None,
+                        ) -> Response | None:
+        response = super().sign_in_by_post(entry, config, work, last_content)
+        response_json = response.json()
+        last_browse = response_json.get('data').get('memberStatus').get('lastBrowse')
+        target_date = datetime.datetime.strptime(last_browse, '%Y-%m-%d %H:%M:%S')
+        days = (datetime.datetime.now() - target_date).days
+        if days > 29:
+            entry.fail_with_prefix(f'last browse: {days} days, {self.URL}')
+            return
         return response
 
-    def get_messages(self, entry: SignInEntry, config: dict) -> None:
-        self.get_nexusphp_messages(entry, config)
-        system_message_url = '/messages.php?action=viewmailbox&box=-2'
-        self.get_nexusphp_messages(entry, config, messages_url=system_message_url)
+    def request(self,
+                entry: SignInEntry,
+                method: str,
+                url: str,
+                **kwargs,
+                ) -> Response | None:
+        key = entry.get('site_config').get('key')
+        try:
+            return super().request(entry, 'POST', url, headers={'x-api-key': key})
+        except Exception as e:
+            entry.fail_with_prefix(NetworkState.NETWORK_ERROR.value.format(url=url, error=e))
 
-    @property
-    def details_selector(self) -> dict:
-        selector = super().details_selector
-        net_utils.dict_merge(selector, {
-            'details': {
-                'hr': None
+    def get_messages(self, entry: SignInEntry, config: dict) -> None:
+        return
+
+    @classmethod
+    def reseed_build_schema(cls) -> dict:
+        return {
+            get_module_name(cls): {
+                'type': 'object',
+                'properties': {
+                    'key': {'type': 'string'}
+                },
+                'additionalProperties': False
             }
-        })
-        return selector
+        }
+
+    def reseed_build_entry(self, entry: Entry, config: dict, site: dict, passkey: dict, torrent_id: str) -> None:
+        record = url_recorder.load_record(entry['class_name'])
+        now = datetime.datetime.now()
+        expire = datetime.timedelta(days=7)
+        if (torrent := record.get(torrent_id)) and parse(torrent['expire']) > now - expire:
+            entry['url'] = torrent['url']
+            return
+
+        key = passkey.get('key')
+        response = request('POST', urljoin(self.URL, self.GEN_DL_TOKEN), headers={'x-api-key': key},
+                           data={'id': torrent_id}, timeout=60)
+        if response.status_code == 200:
+            if response.json().get('code') != 0:
+                entry.fail(response.json().get('message'))
+            else:
+                entry['url'] = response.json().get('data')
+                record[torrent_id] = {'url': entry['url'], 'expire': (now + expire).strftime('%Y-%m-%d')}
+                url_recorder.save_record(entry['class_name'], record)

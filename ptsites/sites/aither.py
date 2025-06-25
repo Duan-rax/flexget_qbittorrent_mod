@@ -37,20 +37,20 @@ class MainClass(Unit3D):
                     'elements': {
                         'bar': 'ul.top-nav__ratio-bar',
                         'registration_date': 'article > time',
-                        'warnings': 'article > aside > section:nth-child(1)',
+                        'warnings': 'article > aside > section:nth-child(2)',
                         'data_table': 'article > aside > section:nth-child(4)'
                     }
                 }
             },
             'details': {
-                # 'uploaded': {
-                #     'regex': r'Upload.+?([\d.]+.?¬†G[ZEPTGMK]?iB)',
-                #     'handle': self.remove_symbol
-                # },
-                # 'downloaded': {
-                #     'regex': r'Download.+?([\d.]+.?¬†G[ZEPTGMK]?iB)',
-                #     'handle': self.remove_symbol
-                # },
+                'uploaded': {
+                    'regex': r'Upload.+?([\d.]+.?[ZEPTGMK]?iB)',
+                    'handle': self.remove_symbol
+                },
+                'downloaded': {
+                    'regex': r'Download.+?([\d.]+.?[ZEPTGMK]?iB)',
+                    'handle': self.remove_symbol
+                },
                 'points': {
                     'regex': 'title="My Bonus Points".*?</i>.+?(\\d[\\d,. ]*)',
                 },
@@ -58,15 +58,15 @@ class MainClass(Unit3D):
                     'regex': 'title="Ratio".*?</i>.+?(\\d[\\d,. ]*)',
                 },
                 'join_date': {
-                    'regex': r'Registration date: (\d{4}-\d{2}-\d{2})',
+                    'regex': r'Registration date.*?(\d{4}-\d{2}-\d{2})',
                     'handle': handle_join_date
                 },
                 'hr': {
-                    'regex': r'Active Warnings.+?(\d+)'
+                    'regex': r'Hit and Run Count.*?(\d+)'
                 }
             }
         })
         return selector
 
-    # def remove_symbol(self, value: str):
-    #     return value.replace('¬†', '')
+    def remove_symbol(self, value: str):
+        return value.replace('\xa0', '')

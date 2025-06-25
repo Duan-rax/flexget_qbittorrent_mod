@@ -7,12 +7,12 @@ from ..utils.value_handler import size
 
 
 class MainClass(Attendance, ReseedPasskey):
-    URL: Final = 'https://hdvideo.one/'
+    URL: Final = 'https://crabpt.vip/'
     USER_CLASSES: Final = {
-        'downloaded': [size(2, 'TiB'), size(8, 'TiB')],
-        'share_ratio': [4, 5.5],
-        'points': [423360, 934752],
-        'days': [24 * 7, 52 * 7]
+        'downloaded': [size(750, 'GiB'), size(3, 'TiB')],
+        'share_ratio': [3.05, 4.55],
+        'points': [400000, 1000000],
+        'days': [280, 700]
     }
 
     @property
@@ -21,8 +21,8 @@ class MainClass(Attendance, ReseedPasskey):
         net_utils.dict_merge(selector, {
             'details': {
                 'points': {
-                    'regex': (r'(做种积分).*?([\d,.]+)', 2)
-                },
+                    'regex': '蟹币值.*?([\\d,.]+)'
+                }
             }
         })
         return selector
