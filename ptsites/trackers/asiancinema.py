@@ -2,10 +2,11 @@ import re
 from typing import Final
 
 from ..base.entry import SignInEntry
-from ..base.sign_in import SignState, check_final_state
+from ..base.sign_in import check_final_state, SignState
 from ..base.work import Work
 from ..schema.unit3d import Unit3D
 from ..utils import net_utils
+from ..utils.value_handler import handle_join_date
 
 
 class MainClass(Unit3D):
@@ -29,83 +30,64 @@ class MainClass(Unit3D):
     @property
     def details_selector(self) -> dict:
         selector = super().details_selector
-
-        selector.get('detail_sources', {}).pop('profile', None)
-        selector.get('details', {}).pop('join_date', None)
-
-        # Unit3D 基类默认的 user_id 正则 '/users/(.*?)"' 非贪婪匹配到下一个引号为止，
-        # 但首页上第一个撞到的 /users/ 链接不一定是纯用户名(比如 "我的发布" 是 /users/Keado/uploads)，
-        # 这样会把 "Keado/uploads" 整个当成 user_id，后面拼出来的详情页链接就全错了。
-        # 改成遇到 / 或 " 就停，只取用户名本身
-        selector['user_id'] = r'/users/([^/"]+)'
-
-        # 锁定顶部数据栏 + 真正的"警告"面板（Unit3D 默认用 .gradient 选择器，
-        # 但 eiga.moi 这个皮肤没有这个 class，所以换成用稳定的 wire:name 属性去定位）
         net_utils.dict_merge(selector, {
+            # The base pattern stops at the next quote, but the first /users/
+            # link on the page may carry a sub-path (e.g. /users/name/uploads),
+            # which would be captured as part of the id. Stop at '/' as well.
+            'user_id': r'/users/([^/"]+)',
             'detail_sources': {
                 'default': {
+                    'do_not_strip': True,
                     'elements': {
-                        'bar': '.top-nav__ratio-bar',
-                        'data_table': 'section[wire\\:name="user-warnings"]'
+                        'bar': 'ul.top-nav__ratio-bar',
+                        'registration_date': 'time.profile__registration',
+                        # This skin has no .gradient element; the warnings panel
+                        # is identified by its wire:name attribute instead.
+                        'warnings': 'section[wire\\:name="user-warnings"]',
+                        'data_table': None
                     }
                 }
-            }
-        })
-
-        # 因为获取到的纯文本没有“上传/下载”等汉字标签，只能通过固定的坑位顺序来提取
-        # 匹配顺序: 1上传 -> 2下载 -> 3做种 -> 4吸血 -> [跳过额度] -> 5魔力 -> 6分享率
-        # 注意：原来把 ratio-bar 里第 8 个数字(“免费令” Free Leech Token 数量)当成 HR 用了，
-        # 这两个是完全不同的统计量，只是凑巧都是 0 才没露馅，现在改成从真正的警告面板里取
-        bar_regex = r'([\d.]+\s*[A-Za-z]+)\s+([\d.]+\s*[A-Za-z]+)\s+(\d+)\s+(\d+)\s+[-]?[\d.]+\s*[A-Za-z]+\s+([\d., \u202f\u00a0]+)\s+(Inf|---?|[\d.]+)'
-
-        net_utils.dict_merge(selector, {
+            },
+            # The ratio bar labels follow the site language, so match on the
+            # li class names instead, which are stable across locales.
             'details': {
                 'uploaded': {
-                    'regex': (bar_regex, 1),
-                    'handle': self.handle_whitespace
+                    'regex': r'ratio-bar__uploaded.*?</i>\s*([\d.]+.?[ZEPTGMK]?iB)',
+                    'handle': self.remove_symbol
                 },
                 'downloaded': {
-                    'regex': (bar_regex, 2),
-                    'handle': self.handle_whitespace
+                    'regex': r'ratio-bar__downloaded.*?</i>\s*([\d.]+.?[ZEPTGMK]?iB)',
+                    'handle': self.remove_symbol
                 },
                 'seeding': {
-                    'regex': (bar_regex, 3)
+                    'regex': r'ratio-bar__seeding.*?</i>\s*(\d+)'
                 },
                 'leeching': {
-                    'regex': (bar_regex, 4)
+                    'regex': r'ratio-bar__leeching.*?</i>\s*(\d+)'
                 },
                 'points': {
-                    'regex': (bar_regex, 5),
-                    'handle': self.handle_points_custom
+                    'regex': r'ratio-bar__points.*?</i>\s*(\d[\d,.\u202f\u00a0 ]*)',
+                    'handle': self.remove_symbol
                 },
                 'share_ratio': {
-                    'regex': (bar_regex, 6)
+                    'regex': r'ratio-bar__ratio.*?</i>\s*(\d[\d,.]*|Inf)'
+                },
+                'join_date': {
+                    'regex': r'profile__registration.*?(\d{4}-\d{2}-\d{2})',
+                    'handle': handle_join_date
                 },
                 'hr': {
-                    # 警告面板里是 "Automated (n)"、"Manual (n)"、"Soft deleted (n)" 三个 tab，
-                    # 未软删的两类加起来就是当前有效的警告(H&R)数量
+                    # The warnings panel has Automated / Manual / Soft deleted
+                    # tabs; the first two together are the active warning count.
                     'regex': r'(Automated \(\d+\).*?Manual \(\d+\))',
-                    'handle': self.handle_warnings
+                    'handle': self.sum_warnings
                 }
             }
         })
         return selector
 
-    def handle_warnings(self, value: str) -> str:
-        nums = re.findall(r'\((\d+)\)', value)
-        return str(sum(int(n) for n in nums))
+    def sum_warnings(self, value: str) -> str:
+        return str(sum(int(n) for n in re.findall(r'\((\d+)\)', value)))
 
-    def handle_whitespace(self, value: str) -> str:
-        # 数字和单位之间可能是 \xa0(&nbsp;) 之类的特殊空白符，统一换成普通空格
-        return re.sub(r'\s+', ' ', value)
-
-    def get_details(self, entry, config):
-        super().get_details(entry, config)
-        if entry.get('join_date') is None:
-            entry['join_date'] = '2023-01-01'  
-
-    def handle_points_custom(self, value):
-        if not value:
-            return '0'
-        # 暴力清洗特殊的 Unicode 空白符，只保留数字和小数点
-        return re.sub(r'[^\d.]', '', value)
+    def remove_symbol(self, value: str) -> str:
+        return value.replace('\xa0', '').replace('\u202f', '').replace(' ', '')
