@@ -2,30 +2,36 @@ from __future__ import annotations
 
 from typing import Final
 
-from ..base.sign_in import check_final_state, SignState, Work
+from ..base.entry import SignInEntry
+from ..base.sign_in import check_final_state, SignState
+from ..base.work import Work
 from ..schema.private_torrent import PrivateTorrent
+from ..utils.net_utils import get_module_name
 from ..utils.value_handler import handle_infinite
 
 
 class MainClass(PrivateTorrent):
     URL: Final = 'https://www.myanonamouse.net/'
-    # The API session cannot reach HTML pages, so the join date is
-    # unavailable and the 'days' requirement cannot be evaluated.
     USER_CLASSES: Final = {
         'uploaded': [26843545600],
         'share_ratio': [2.0],
+        'days': [28]
     }
 
-    # Config format (the mam_id= prefix is required):
-    #   sign_in:
-    #     sites:
-    #       myanonamouse: 'mam_id=xxxxxxxx...'
-    #
-    # Create a session at Preferences -> Security (IP or ASN locked).
-    # Password login via takelogin.php is deliberately avoided: the site
-    # counts failed login attempts and locks the account out.
+    @classmethod
+    def sign_in_build_schema(cls) -> dict:
+        return {
+            get_module_name(cls): {
+                'type': 'object',
+                'properties': {
+                    'cookie': {'type': 'string'},
+                    'join_date': {'type': 'string', 'format': 'date'}
+                },
+                'additionalProperties': False
+            }
+        }
 
-    def sign_in_build_workflow(self, entry, config: dict) -> list[Work]:
+    def sign_in_build_workflow(self, entry: SignInEntry, config: dict) -> list[Work]:
         return [
             Work(
                 url='/jsonLoad.php?snatch_summary',
