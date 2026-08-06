@@ -9,16 +9,21 @@ from ..utils.value_handler import handle_infinite
 
 class MainClass(PrivateTorrent):
     URL: Final = 'https://www.myanonamouse.net/'
-    # API session 拿不到注册日期,去掉 days 判定
+    # The API session cannot reach HTML pages, so the join date is
+    # unavailable and the 'days' requirement cannot be evaluated.
     USER_CLASSES: Final = {
         'uploaded': [26843545600],
         'share_ratio': [2.0],
     }
 
-    # 配置写法(前缀 mam_id= 必须带上):
+    # Config format (the mam_id= prefix is required):
     #   sign_in:
     #     sites:
     #       myanonamouse: 'mam_id=xxxxxxxx...'
+    #
+    # Create a session at Preferences -> Security (IP or ASN locked).
+    # Password login via takelogin.php is deliberately avoided: the site
+    # counts failed login attempts and locks the account out.
 
     def sign_in_build_workflow(self, entry, config: dict) -> list[Work]:
         return [
