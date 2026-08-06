@@ -63,10 +63,7 @@ class MainClass(Unit3D):
                     'regex': r'Registration date.*?(\d{4}-\d{2}-\d{2})',
                     'handle': handle_join_date
                 },
-                'hr': {
-                    # 巧用障眼法：将消失的 HnR 映射到 Warnings 的数值上进行占位提取，防止空值报错
-                    'regex': r'Warnings[\s\S]*?(\d+)'
-                }
+                'hr': None
             }
         })
         return selector

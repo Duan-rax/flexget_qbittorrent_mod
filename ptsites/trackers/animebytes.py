@@ -13,6 +13,7 @@ from ..schema.gazelle import Gazelle
 from ..utils import net_utils
 from ..utils.value_handler import handle_infinite
 
+
 class MainClass(Gazelle, ReseedCookie):
     URL: Final = 'https://animebytes.tv/'
     USER_CLASSES: Final = {
@@ -55,16 +56,19 @@ class MainClass(Gazelle, ReseedCookie):
                 'default': {
                     'link': '/user.php?id={}',
                     'elements': {
-                        # 顶部导航栏当前魔力值余额；要放在 bar 前面，
-                        # 因为 Tracker Stats 面板底部还有一行不相关的 "Yen per day: ¥0"，
-                        # 顺序反了正则会先撞上那个
+                        # Top-nav bonus point balance. Must come before 'bar':
+                        # the Tracker Stats panel ends with an unrelated
+                        # "Yen per day: ¥0" line the regex would match first.
                         'points': '#yen_count',
-                        # “Tracker Stats” 面板，别再抓到侧边栏 “Personal” 小盒子里的 Raw 数据了
+                        # The "Tracker Stats" panel, not the "Personal" sidebar box.
                         'bar': '.userstatsright',
-                        # “Details” 面板，加入日期在这里，跟 Tracker Stats 不是同一个区块
+                        # The "Details" panel; the join date lives here, in a
+                        # different block from Tracker Stats.
                         'join_date_box': '.userstatsleft',
-                        # Gazelle 基类默认还带一个 table 选择器(指向早就不存在的旧版侧边栏)，
-                        # dict_merge 是深度合并，不显式清掉的话它会一直留着，页面上找不到就报错
+                        # The Gazelle base class also sets a 'table' selector
+                        # pointing at the old sidebar layout. dict_merge is a deep
+                        # merge, so it must be cleared explicitly or the lookup
+                        # fails on the current page.
                         'table': None
                     }
                 }
@@ -77,7 +81,7 @@ class MainClass(Gazelle, ReseedCookie):
                     'regex': r'Downloaded:\s*([\d.]+ [KMGTPE]?i?B)'
                 },
                 'share_ratio': {
-                    'regex': r'Ratio:\s*([\d,.]+|âˆž)',
+                    'regex': r'Ratio:\s*([\d,.]+|∞)',
                     'handle': handle_infinite
                 },
                 'points': {
@@ -90,8 +94,9 @@ class MainClass(Gazelle, ReseedCookie):
                     'regex': r'Leeching:\s*(\d+)'
                 },
                 'join_date': {
-                    # 原来的 [^<]+ago 在文本被去标签后没有 < 可以拦截，
-                    # 会一路贪婪匹配到 "Last Seen: ... ago" 那行去，改成遇到换行就停
+                    # Once tags are stripped there is no '<' left for [^<]+ago
+                    # to stop at, so it runs greedily into the "Last Seen: ... ago"
+                    # line. Stop at a newline instead.
                     'regex': r'Joined:\s*([^\n<]+ago)',
                 },
             }
