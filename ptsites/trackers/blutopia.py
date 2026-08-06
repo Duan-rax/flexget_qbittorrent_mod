@@ -71,10 +71,10 @@ class MainClass(Unit3D):
         return selector
 
     def handle_number(self, value: str) -> str:
-        # 站点用 U+202F（窄不换行空格）或 U+00A0（不换行空格）当千位分隔符，
-        # 普通空格类字符集匹配不到，这里统一清掉，逗号会在框架里自动再处理一遍
+        # The site uses U+202F or U+00A0 as the thousands separator, which the
+        # plain space class does not match. Strip them; commas are handled downstream.
         return re.sub(r'[\u202f\u00a0\s]', '', value)
 
     def handle_whitespace(self, value: str) -> str:
-        # 数字和单位之间可能是 \xa0(&nbsp;) 之类的特殊空白符，统一换成普通空格
+        # The gap between value and unit may be \xa0 (&nbsp;); normalise to a plain space
         return re.sub(r'\s+', ' ', value)

@@ -69,5 +69,5 @@ class MainClass(Unit3D):
         return selector
 
     def remove_symbol(self, value: str):
-        # 扩展清理逻辑：去除普通空格、不换行空格(\xa0)以及窄不换行空格(\u202f)
+        # Strip regular spaces, no-break space (\xa0) and narrow no-break space (\u202f)
         return re.sub(r'[\s\xa0\u202f]', '', value)
