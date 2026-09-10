@@ -13,9 +13,9 @@ from requests import Response
 from ..base.entry import SignInEntry
 from ..base.request import NetworkState, check_network_state
 from ..base.reseed import ReseedPasskey
-from ..base.sign_in import SignState, check_sign_in_state, check_final_state
+from ..base.sign_in import SignState, check_final_state, check_sign_in_state
 from ..base.work import Work
-from ..utils import net_utils, baidu_ocr, dmhy_image
+from ..utils import baidu_ocr, dmhy_image, net_utils
 from ..utils.net_utils import get_module_name
 
 try:
@@ -126,7 +126,14 @@ class MainClass(NexusPHP, ReseedPasskey):
                                    else 'Can not build_data')
             return None
         logger.info(data)
-        return self.request(entry, 'post', work.url, data=data)
+        # U2 validates the source of showup form submissions. The session-wide
+        # referer points at the site root, while a browser submits this form
+        # from the showup page itself and includes a same-origin Origin header.
+        headers = {
+            'origin': entry['url'].rstrip('/'),
+            'referer': work.url,
+        }
+        return self.request(entry, 'post', work.url, data=data, headers=headers)
 
     def build_data(self, entry: SignInEntry, config: dict, work: Work, base_content: str,
                    ocr_config: dict) -> dict | None:

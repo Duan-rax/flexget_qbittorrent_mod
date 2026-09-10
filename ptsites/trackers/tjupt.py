@@ -7,14 +7,14 @@ from typing import Final
 from urllib.parse import urljoin
 
 import requests
-from PIL import Image
 from flexget.utils.soup import get_soup
 from loguru import logger
+from PIL import Image
 
 from ..base.entry import SignInEntry
-from ..base.request import check_network_state, NetworkState
+from ..base.request import NetworkState, check_network_state
 from ..base.reseed import ReseedPasskey
-from ..base.sign_in import check_final_state, SignState, check_sign_in_state
+from ..base.sign_in import SignState, check_final_state, check_sign_in_state
 from ..base.work import Work
 from ..schema.nexusphp import NexusPHP
 from ..utils import net_utils
@@ -67,13 +67,18 @@ class MainClass(NexusPHP, ReseedPasskey):
                 }
             },
             'details': {
+                'uploaded': {
+                    'regex': (r'(上[传傳]量|Uploaded).*?([\d.]+ ?[ZEPTGMK]?i?B)', 2)
+                },
                 'downloaded': None,
                 'share_ratio': None,
                 'seeding': {
-                    'regex': '种子数合计.*?(\\d+)'
+                    'regex': '种子数合计.*?(\\d+)',
+                    'optional': True,
                 },
                 'leeching': {
-                    'regex': '种子数合计.*?\\d+\\D+(\\d+)'
+                    'regex': '种子数合计.*?\\d+\\D+(\\d+)',
+                    'optional': True,
                 },
                 'hr': {
                     'regex': 'H&R.*?(\\d+)',
@@ -83,6 +88,14 @@ class MainClass(NexusPHP, ReseedPasskey):
             }
         })
         return selector
+
+    def get_detail_value(self, content: str, detail_config: dict) -> str | None:
+        value = super().get_detail_value(content, detail_config)
+        # TJUPT now loads torrent counts asynchronously. Keep parsing legacy
+        # pages, but use the existing unknown marker when counts are absent.
+        if value is None and detail_config and detail_config.get('optional'):
+            return '*'
+        return value
 
     def sign_in_by_douban(self, entry: SignInEntry, config: dict, work: Work, last_content: str):
         if break_match := re.search(self.BREAK_REGEX, last_content):
