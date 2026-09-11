@@ -99,7 +99,7 @@ class MainClass(NexusPHP, ReseedPasskey):
                 method=self.sign_in_by_anime,
                 data=self.DATA,
                 assert_state=(check_network_state, NetworkState.SUCCEED),
-                img_regex='image\\.php\\?action=adbc2&req=.+?(?=&imagehash)',
+                img_regex='image\\.php\\?action=adbc2&req=.+?&imagehash=[0-9a-f]+',
                 reload_regex='image\\.php\\?action=reload_adbc2&div=showup&rand=\\d+'
             ),
             Work(
