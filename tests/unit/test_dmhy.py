@@ -11,6 +11,43 @@ from ptsites.base.work import Work
 from ptsites.trackers import dmhy
 
 
+def test_requests_use_a_consistent_browser_fingerprint(monkeypatch) -> None:
+    created = {}
+
+    class FakeBrowserSession:
+        def __init__(self, **kwargs):
+            created.update(kwargs)
+            self.headers = {}
+            self.cookies = {}
+
+        def request(self, method, url, **kwargs):
+            created.update(method=method, url=url, request_kwargs=kwargs)
+            response = Response()
+            response.status_code = 200
+            response.url = url
+            return response
+
+    monkeypatch.setattr(dmhy, 'BrowserSession', FakeBrowserSession)
+    tracker = dmhy.MainClass()
+    entry = SignInEntry()
+    entry.update({
+        'headers': {'user-agent': 'Configured browser', 'referer': 'https://u2.dmhy.org/'},
+        'cookie': 'session=test-value',
+    })
+
+    response = tracker.request(entry, 'get', tracker.URL)
+
+    assert response.status_code == 200
+    assert created == {
+        'impersonate': 'chrome',
+        'method': 'get',
+        'url': tracker.URL,
+        'request_kwargs': {'timeout': 60},
+    }
+    assert tracker.session.headers == {'referer': tracker.URL}
+    assert tracker.session.cookies == {'session': 'test-value'}
+
+
 def test_captcha_image_request_keeps_image_hash() -> None:
     tracker = dmhy.MainClass()
     entry = SignInEntry()
@@ -75,7 +112,12 @@ def test_build_data_uses_dynamic_images_then_registers_image_hash(monkeypatch) -
     assert requested == [(
         'get',
         tracker.URL + full_image_url,
-        {'headers': {'referer': tracker.URL + 'showup.php?action=show'}},
+        {'headers': {
+            'referer': tracker.URL + 'showup.php?action=show',
+            'sec-fetch-dest': 'image',
+            'sec-fetch-mode': 'no-cors',
+            'sec-fetch-site': 'same-origin',
+        }},
     )]
 
 
@@ -119,5 +161,10 @@ def test_anime_answer_is_submitted_from_showup_page(monkeypatch) -> None:
         'headers': {
             'origin': 'https://u2.dmhy.org',
             'referer': tracker.URL + 'showup.php?action=show',
+            'sec-fetch-dest': 'document',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'same-origin',
+            'sec-fetch-user': '?1',
+            'upgrade-insecure-requests': '1',
         },
     }

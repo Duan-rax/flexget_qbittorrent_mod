@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Final
 from urllib.parse import urljoin
 
+from curl_cffi.requests import Session as BrowserSession
 from requests import Response
 
 from ..base.entry import SignInEntry
@@ -58,6 +59,21 @@ class MainClass(NexusPHP, ReseedPasskey):
     def __init__(self):
         super().__init__()
         self.times = 0
+
+    def request(self, entry: SignInEntry, method: str, url: str, **kwargs) -> Response | None:
+        if not self.session:
+            self.session = BrowserSession(impersonate='chrome')
+            if entry_headers := entry.get('headers'):
+                # curl_cffi supplies headers matching its selected browser. A
+                # separately configured user-agent would make that fingerprint
+                # internally inconsistent.
+                self.session.headers.update({
+                    key: value for key, value in entry_headers.items()
+                    if key.lower() != 'user-agent' and value
+                })
+            if entry_cookie := entry.get('cookie'):
+                self.session.cookies.update(net_utils.cookie_str_to_dict(entry_cookie))
+        return super().request(entry, method, url, **kwargs)
 
     @classmethod
     def sign_in_build_schema(cls) -> dict:
@@ -126,14 +142,21 @@ class MainClass(NexusPHP, ReseedPasskey):
                                    else 'Can not build_data')
             return None
         logger.info(data)
-        # U2 validates the source of showup form submissions. The session-wide
-        # referer points at the site root, while a browser submits this form
-        # from the showup page itself and includes a same-origin Origin header.
+        # Match the navigation metadata sent when a browser submits the form.
         headers = {
             'origin': entry['url'].rstrip('/'),
             'referer': work.url,
+            'sec-fetch-dest': 'document',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'same-origin',
+            'sec-fetch-user': '?1',
+            'upgrade-insecure-requests': '1',
         }
-        return self.request(entry, 'post', work.url, data=data, headers=headers)
+        response = self.request(entry, 'post', work.url, data=data, headers=headers)
+        if response is not None and response.status_code == 403:
+            response_text = re.sub(r'\s+', ' ', net_utils.decode(response) or '').strip()
+            logger.error('DMHY showup rejected the submission: {}', response_text[:500])
+        return response
 
     def build_data(self, entry: SignInEntry, config: dict, work: Work, base_content: str,
                    ocr_config: dict) -> dict | None:
@@ -209,7 +232,12 @@ class MainClass(NexusPHP, ReseedPasskey):
 
     def register_captcha_image(self, entry: SignInEntry, work: Work, img_url: str) -> bool:
         real_img_url = urljoin(entry['url'], img_url)
-        response = self.request(entry, 'get', real_img_url, headers={'referer': urljoin(entry['url'], work.url)})
+        response = self.request(entry, 'get', real_img_url, headers={
+            'referer': urljoin(entry['url'], work.url),
+            'sec-fetch-dest': 'image',
+            'sec-fetch-mode': 'no-cors',
+            'sec-fetch-site': 'same-origin',
+        })
         return check_network_state(entry, real_img_url, response) == NetworkState.SUCCEED
 
     def get_image(self, entry: SignInEntry, config: dict, img_url: str, char_count: int) -> tuple | None:
@@ -280,7 +308,12 @@ class MainClass(NexusPHP, ReseedPasskey):
         time.sleep(3)
         logger.debug('request image...')
         real_img_url = urljoin(entry['url'], img_url)
-        base_img_response = self.request(entry, 'get', real_img_url)
+        base_img_response = self.request(entry, 'get', real_img_url, headers={
+            'referer': urljoin(entry['url'], '/showup.php?action=show'),
+            'sec-fetch-dest': 'image',
+            'sec-fetch-mode': 'no-cors',
+            'sec-fetch-site': 'same-origin',
+        })
         if base_img_response is None or base_img_response.status_code != 200 or base_img_response.url == urljoin(
                 entry['url'], '/pic/trans.gif?debug=NIM'):
             return None
