@@ -11,41 +11,16 @@ from ptsites.base.work import Work
 from ptsites.trackers import dmhy
 
 
-def test_requests_use_a_consistent_browser_fingerprint(monkeypatch) -> None:
-    created = {}
-
-    class FakeBrowserSession:
-        def __init__(self, **kwargs):
-            created.update(kwargs)
-            self.headers = {}
-            self.cookies = {}
-
-        def request(self, method, url, **kwargs):
-            created.update(method=method, url=url, request_kwargs=kwargs)
-            response = Response()
-            response.status_code = 200
-            response.url = url
-            return response
-
-    monkeypatch.setattr(dmhy, 'BrowserSession', FakeBrowserSession)
+def test_workflow_uses_browser_page_urls() -> None:
     tracker = dmhy.MainClass()
     entry = SignInEntry()
-    entry.update({
-        'headers': {'user-agent': 'Configured browser', 'referer': 'https://u2.dmhy.org/'},
-        'cookie': 'session=test-value',
-    })
+    entry['site_config'] = {'username': 'tester'}
 
-    response = tracker.request(entry, 'get', tracker.URL)
-
-    assert response.status_code == 200
-    assert created == {
-        'impersonate': 'chrome',
-        'method': 'get',
-        'url': tracker.URL,
-        'request_kwargs': {'timeout': 60},
-    }
-    assert tracker.session.headers == {'referer': tracker.URL}
-    assert tracker.session.cookies == {'session': 'test-value'}
+    assert [work.url for work in tracker.sign_in_build_workflow(entry, {})] == [
+        '/showup.php',
+        '/showup.php?action=show',
+        '/showup.php',
+    ]
 
 
 def test_captcha_image_request_keeps_image_hash() -> None:
@@ -70,6 +45,7 @@ def test_build_data_uses_dynamic_images_then_registers_image_hash(monkeypatch) -
     full_image_url = 'image.php?action=adbc2&req=v2.signed-request&imagehash=c23fc31a6e29bccc'
     html = f'''
         <img src="{full_image_url}" />
+        <input type="hidden" name="_csrf" value="csrf-token" />
         <input type="submit" name="captcha_token" value="Salaryman Kintarou / 上班族金太郎" />
         <input type="hidden" name="req" value="v2.signed-request" />
         <input type="hidden" name="hash" value="c23fc31a6e29bccc" />
@@ -103,6 +79,7 @@ def test_build_data_uses_dynamic_images_then_registers_image_hash(monkeypatch) -
 
     assert tracker.build_data(entry, {}, work, html, {'retry': 20, 'char_count': 4, 'score': 40}) == {
         'captcha_token': 'Salaryman Kintarou / 上班族金太郎',
+        '_csrf': 'csrf-token',
         'req': 'v2.signed-request',
         'hash': 'c23fc31a6e29bccc',
         'form': 'form-token',
@@ -113,7 +90,7 @@ def test_build_data_uses_dynamic_images_then_registers_image_hash(monkeypatch) -
         'get',
         tracker.URL + full_image_url,
         {'headers': {
-            'referer': tracker.URL + 'showup.php?action=show',
+            'referer': tracker.URL + 'showup.php',
             'sec-fetch-dest': 'image',
             'sec-fetch-mode': 'no-cors',
             'sec-fetch-site': 'same-origin',
@@ -160,7 +137,7 @@ def test_anime_answer_is_submitted_from_showup_page(monkeypatch) -> None:
         'data': answer,
         'headers': {
             'origin': 'https://u2.dmhy.org',
-            'referer': tracker.URL + 'showup.php?action=show',
+            'referer': tracker.URL + 'showup.php',
             'sec-fetch-dest': 'document',
             'sec-fetch-mode': 'navigate',
             'sec-fetch-site': 'same-origin',
