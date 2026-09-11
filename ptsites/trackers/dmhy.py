@@ -146,7 +146,8 @@ class MainClass(NexusPHP, ReseedPasskey):
         logger.debug('attempts: {} / {}, url: {}', self.times, ocr_config.get('retry'), urljoin(entry['url'], img_url))
         data = {}
         found = False
-        if images := self.get_image(entry, config, img_url, ocr_config.get('char_count')):
+        analysis_img_url = re.sub(r'&imagehash=[0-9a-f]+$', '', img_url)
+        if images := self.get_image(entry, config, analysis_img_url, ocr_config.get('char_count')):
             image1, image2 = images
             self.save_iamge(image1, 'step3_a_diff.png')
             self.save_iamge(image2, 'step3_b_diff.png')
@@ -200,9 +201,16 @@ class MainClass(NexusPHP, ReseedPasskey):
                 return None
             reload_content = net_utils.decode(reload_response)
             return self.build_data(entry, config, work, reload_content, ocr_config)
+        if not self.register_captcha_image(entry, work, img_url):
+            return None
         site_config = entry['site_config']
         data['message'] = site_config.get('comment')
         return data
+
+    def register_captcha_image(self, entry: SignInEntry, work: Work, img_url: str) -> bool:
+        real_img_url = urljoin(entry['url'], img_url)
+        response = self.request(entry, 'get', real_img_url, headers={'referer': urljoin(entry['url'], work.url)})
+        return check_network_state(entry, real_img_url, response) == NetworkState.SUCCEED
 
     def get_image(self, entry: SignInEntry, config: dict, img_url: str, char_count: int) -> tuple | None:
         image_list = []
