@@ -36,6 +36,10 @@ except ImportError:
 _RETRY = 20
 _CHAR_COUNT = 4
 _SCORE = 40
+_CSRF_REGEXES = (
+    r'<input type="hidden" name="_csrf" value="(.*?)"\s*/?>',
+    r'<meta name="csrf-token" content="(.*?)"\s*/?>',
+)
 
 
 class MainClass(NexusPHP, ReseedPasskey):
@@ -143,9 +147,17 @@ class MainClass(NexusPHP, ReseedPasskey):
         return response
 
     def build_data(self, entry: SignInEntry, config: dict, work: Work, base_content: str,
-                   ocr_config: dict) -> dict | None:
+                   ocr_config: dict, csrf_token: str | None = None) -> dict | None:
         if entry.failed:
             return None
+        if csrf_token is None:
+            for csrf_regex in _CSRF_REGEXES:
+                if csrf_match := re.search(csrf_regex, base_content, re.DOTALL):
+                    csrf_token = csrf_match.group(1)
+                    break
+            if csrf_token is None:
+                entry.fail_with_prefix('Cannot find key: _csrf, url: {}'.format(work.url))
+                return None
         if not (img_url_match := re.search(work.img_regex, base_content)):
             entry.fail_with_prefix('Can not found img_url')
             return None
@@ -207,10 +219,11 @@ class MainClass(NexusPHP, ReseedPasskey):
             if reload__net_state != NetworkState.SUCCEED:
                 return None
             reload_content = net_utils.decode(reload_response)
-            return self.build_data(entry, config, work, reload_content, ocr_config)
+            return self.build_data(entry, config, work, reload_content, ocr_config, csrf_token)
         if not self.register_captcha_image(entry, work, img_url):
             return None
         site_config = entry['site_config']
+        data['_csrf'] = csrf_token
         data['message'] = site_config.get('comment')
         return data
 
