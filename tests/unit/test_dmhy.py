@@ -45,7 +45,6 @@ def test_build_data_uses_dynamic_images_then_registers_image_hash(monkeypatch) -
     full_image_url = 'image.php?action=adbc2&req=v2.signed-request&imagehash=c23fc31a6e29bccc'
     html = f'''
         <img src="{full_image_url}" />
-        <input type="hidden" name="_csrf" value="csrf-token" />
         <input type="submit" name="captcha_token" value="Salaryman Kintarou / 上班族金太郎" />
         <input type="hidden" name="req" value="v2.signed-request" />
         <input type="hidden" name="hash" value="c23fc31a6e29bccc" />
@@ -79,7 +78,6 @@ def test_build_data_uses_dynamic_images_then_registers_image_hash(monkeypatch) -
 
     assert tracker.build_data(entry, {}, work, html, {'retry': 20, 'char_count': 4, 'score': 40}) == {
         'captcha_token': 'Salaryman Kintarou / 上班族金太郎',
-        '_csrf': 'csrf-token',
         'req': 'v2.signed-request',
         'hash': 'c23fc31a6e29bccc',
         'form': 'form-token',

@@ -50,7 +50,6 @@ class MainClass(NexusPHP, ReseedPasskey):
 
     DATA = {
         'regex_keys': ['<input type="submit" name="(captcha_.*?)" value="(.*?)" />'],
-        '_csrf': '<input type="hidden" name="_csrf" value="(.*?)" />',
         'req': '<input type="hidden" name="req" value="(.*?)" />',
         'hash': '<input type="hidden" name="hash" value="(.*?)" />',
         'form': '<input type="hidden" name="form" value="(.*?)" />'
