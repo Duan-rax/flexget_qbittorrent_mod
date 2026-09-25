@@ -68,10 +68,11 @@ def get_jap_ocr(img: Image.Image, entry: SignInEntry, config: dict) -> str | Non
     if result.get('error_msg'):
         entry.fail_with_prefix(result.get('error_msg'))
         return None
-    text = ''
-    for words_list in result.get('words_result'):
-        text += words_list.get('words')
-    return ''.join(re.findall(r'[\u2E80-\u9FFF]', text))
+    return ' '.join(
+        words_list.get('words', '')
+        for words_list in result.get('words_result', [])
+        if words_list.get('words')
+    )
 
 
 def get_ocr_code(img: Image.Image, entry: SignInEntry, config: dict) -> tuple:

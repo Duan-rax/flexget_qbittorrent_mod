@@ -39,3 +39,19 @@ def test_japanese_ocr_network_error_is_recoverable(monkeypatch) -> None:
 
     assert baidu_ocr.get_jap_ocr(Image.new('RGB', (10, 10)), entry, {}) is None
     assert not entry.failed
+
+
+def test_japanese_ocr_preserves_latin_and_cjk_text(monkeypatch) -> None:
+    class SuccessfulClient:
+        def basicAccurate(self, *args, **kwargs):
+            return {
+                'words_result': [
+                    {'words': 'TIME BOKAN'},
+                    {'words': 'タイムボカン'},
+                ]
+            }
+
+    monkeypatch.setattr(baidu_ocr, 'get_client', lambda *args: SuccessfulClient())
+    entry = SignInEntry()
+
+    assert baidu_ocr.get_jap_ocr(Image.new('RGB', (10, 10)), entry, {}) == 'TIME BOKAN タイムボカン'
