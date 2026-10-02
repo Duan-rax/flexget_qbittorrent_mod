@@ -96,7 +96,8 @@ class MainClass(NexusPHP, ReseedPasskey):
                 },
                 'points': {
                     'regex': r'魔力值.*?使用.*?([\d,.]+)'
-                }
+                },
+                'hr': None,
             }
         })
         return selector

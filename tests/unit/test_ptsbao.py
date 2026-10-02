@@ -56,3 +56,7 @@ def test_ocr_uses_full_captcha_url_and_submits_code(monkeypatch) -> None:
             {'data': {'imagehash': 'hash-token', 'imagestring': 'ABC123'}},
         ),
     ]
+
+
+def test_details_do_not_require_hr() -> None:
+    assert ptsbao.MainClass().details_selector['details']['hr'] is None
