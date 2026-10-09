@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Final
 
 from ..base.entry import SignInEntry
@@ -30,6 +32,23 @@ class MainClass(PrivateTorrent):
                 'additionalProperties': False
             }
         }
+
+    @classmethod
+    def sign_in_build_entry(cls, entry: SignInEntry, config: dict) -> None:
+        super().sign_in_build_entry(entry, config)
+
+        cookies_backup_file = Path.cwd() / 'cookies_backup.json'
+        if not cookies_backup_file.is_file():
+            return
+
+        try:
+            cookies_backup = json.loads(cookies_backup_file.read_text(encoding='utf-8'))
+            backup_cookie = cookies_backup.get(get_module_name(cls), {}).get('cookie')
+        except (OSError, json.JSONDecodeError, AttributeError):
+            return
+
+        if backup_cookie:
+            entry['cookie'] = backup_cookie
 
     def sign_in_build_workflow(self, entry: SignInEntry, config: dict) -> list[Work]:
         return [
