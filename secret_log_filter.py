@@ -6,15 +6,32 @@ import re
 from flexget.log import add_filter
 
 
-TELEGRAM_BOT_TOKEN = re.compile(
-    r'(?P<prefix>(?:https?://)?api\.telegram\.org/bot)'
-    r'\d{5,20}:[A-Za-z0-9_-]{20,}',
-    flags=re.IGNORECASE,
+SECRET_PATTERNS = (
+    re.compile(
+        r'(?P<prefix>(?:https?://)?api\.telegram\.org/bot)'
+        r'\d{5,20}:[A-Za-z0-9_-]{20,}',
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        r'(?P<prefix>(?:access_token|token|api(?:_|-)?key|passkey|password|psd|client_secret)=)'
+        r'[^&\s"<>]+',
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        r'(?P<prefix><dt>\s*Passkey\s*</dt>.{0,2000}?<code>)[^<]+',
+        flags=re.IGNORECASE | re.DOTALL,
+    ),
+    re.compile(
+        r'(?P<prefix>data-copy=["\'])[^"\']+',
+        flags=re.IGNORECASE,
+    ),
 )
 
 
 def redact_secrets(message: str) -> str:
-    return TELEGRAM_BOT_TOKEN.sub(r'\g<prefix>[REDACTED]', message)
+    for pattern in SECRET_PATTERNS:
+        message = pattern.sub(r'\g<prefix>[REDACTED]', message)
+    return message
 
 
 class SecretRedactionFilter(logging.Filter):
