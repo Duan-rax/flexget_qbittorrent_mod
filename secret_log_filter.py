@@ -18,7 +18,7 @@ SECRET_PATTERNS = (
         flags=re.IGNORECASE,
     ),
     re.compile(
-        r'(?P<prefix><dt>\s*Passkey\s*</dt>.{0,2000}?<code>)[^<]+',
+        r'(?P<prefix>Passkey.{0,3000}?<code>)[^<]+',
         flags=re.IGNORECASE | re.DOTALL,
     ),
     re.compile(
