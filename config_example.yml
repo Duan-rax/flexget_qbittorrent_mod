@@ -365,6 +365,8 @@ tasks:
         hdbd: 'xxxxxxxx'
         hdchina:
           cookie: 'xxxxxxxx'
+        # HDWING upstream alternative, using a passkey.
+        # hdwing: 'xxxxxxxx'
         hdcity:
           cookie: 'xxxxxxxx'
         hddisk: 'xxxxxxxx'
@@ -671,6 +673,8 @@ tasks:
         hdatmos: 'xxxxxxxx'
         hdbd: 'xxxxxxxx'
         hdchina: 'xxxxxxxx'
+        # HDWING upstream alternative, checking the session only.
+        # hdwing: 'xxxxxxxx'
         hdcity: 'xxxxxxxx'
         hddolby: 'xxxxxxxx'
         hdfans: 'xxxxxxxx'
