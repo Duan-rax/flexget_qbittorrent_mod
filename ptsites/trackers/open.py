@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import re
 from io import BytesIO
 from typing import Final
 from urllib.parse import urljoin
 
+from flexget.utils.soup import get_soup
 from requests import Response
 
 from ..base.entry import SignInEntry
@@ -56,35 +56,40 @@ class MainClass(NexusPHP, ReseedPasskey):
         if image_hash_network_state != NetworkState.SUCCEED:
             entry.fail_with_prefix('Get image hash failed.')
             return None
-        image_hash_content = net_utils.decode(image_hash_response)
-        image_hash_re = re.search('(?<=imagehash=).*?(?=")', image_hash_content)
-        img_src_re = re.search('(?<=img src=").*?(?=")', image_hash_content)
-
-        if image_hash_re and img_src_re:
-            image_hash = image_hash_re.group()
-            img_src = img_src_re.group()
-            img_url = urljoin(entry['url'], img_src)
-            img_response = self.request(entry, 'get', img_url)
-            img_network_state = check_network_state(entry, img_url, img_response)
-            if img_network_state != NetworkState.SUCCEED:
-                entry.fail_with_prefix('Get image failed.')
-                return None
-        else:
-            entry.fail_with_prefix('Cannot find key: image_hash')
+        form = get_soup(net_utils.decode(image_hash_response)).select_one(
+            'form:has(input[name="imagehash"]):has(input[name="imagestring"])'
+        )
+        if form is None:
+            entry.fail_with_prefix('Cannot find the sign-in form.')
             return None
 
-        img = Image.open(BytesIO(img_response.content))
-        code, img_byte_arr = baidu_ocr.get_ocr_code(img, entry, config)
-        if not entry.failed:
-            if len(code) == 6:
-                params = {
-                    'cmd': 'signin'
-                }
-                data = {
-                    'imagehash': (None, image_hash),
-                    'imagestring': (None, code)
-                }
-                return self.request(entry, 'post', work.url, files=data, params=params)
+        fields = {}
+        for name in ('imagehash', 'csrf_token'):
+            field = form.select_one(f'input[name="{name}"][value]')
+            if field is None or not field['value']:
+                entry.fail_with_prefix(f'Cannot find key: {name}')
+                return None
+            fields[name] = (None, field['value'])
+
+        image = form.select_one('img[src*="imagehash="]')
+        if image is None:
+            entry.fail_with_prefix('Cannot find the sign-in image.')
+            return None
+
+        headers = {'Referer': image_hash_response.url}
+        img_url = urljoin(image_hash_response.url, image['src'])
+        img_response = self.request(entry, 'get', img_url, headers=headers)
+        if check_network_state(entry, img_url, img_response) != NetworkState.SUCCEED:
+            entry.fail_with_prefix('Get image failed.')
+            return None
+
+        with Image.open(BytesIO(img_response.content)) as img:
+            code, _ = baidu_ocr.get_ocr_code(img, entry, config)
+        if not entry.failed and code and len(code) == 6:
+            fields['imagestring'] = (None, code)
+            return self.request(
+                entry, 'post', work.url, files=fields, params={'cmd': 'signin'}, headers=headers
+            )
         return None
 
     @property

@@ -65,7 +65,7 @@ class Request:
             self.session.mount('https://', HTTPAdapter(max_retries=2))
         try:
             response: Response = self.session.request(method, url, timeout=60, **kwargs)
-            if cf_detected(response):
+            if response is not None and response.status_code < 500 and cf_detected(response):
                 entry.fail_with_prefix(f'url: {url} detected CloudFlare DDoS-GUARD')
             elif response is not None and response.status_code != 200:
                 entry.fail_with_prefix(f'url: {url} response.status_code={response.status_code}')
